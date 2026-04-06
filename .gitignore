@@ -162,3 +162,6 @@ basic_calculator.py
 few_shot.txt
 test_generated.py
 coverage.json
+
+# ENV file containing API key
+.env

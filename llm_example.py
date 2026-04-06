@@ -1,19 +1,23 @@
-import google.generativeai as genai
+import os
+
+import dotenv
+from google import genai
 from common.llm_test_generator import LLMTestGenerator
 from common.prompt_generator import PromptGenerator
 from common.abstract_executor import AbstractExecutor
 from file_name_check import file_name_check
 import importlib
 
-key = ""
+dotenv.load_dotenv()
+key = os.getenv("API_KEY")
    
 
 if __name__ == "__main__":
     # Configure the generative AI with the API key
-    genai.configure(api_key=key)
+    client = genai.Client(api_key=key)
 
     # Create a generative model
-    model = genai.GenerativeModel('gemini-pro')
+    model_name = "gemini-2.5-flash"
 
     function_to_test = file_name_check
 
@@ -21,7 +25,7 @@ if __name__ == "__main__":
 
 
     # Create an LLMTestGenerator object with the generative model and the function to test
-    llm_generator = LLMTestGenerator(model, function=function_to_test)
+    llm_generator = LLMTestGenerator(client, model_name=model_name, function=function_to_test)
 
     # Create a PromptGenerator object with the function to test
     prompt_generator = PromptGenerator(function_to_test)
