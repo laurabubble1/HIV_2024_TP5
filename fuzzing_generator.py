@@ -3,6 +3,8 @@ import ast
 import copy
 from parser import extract_seed_input
 from common.abstract_executor import AbstractExecutor
+import matplotlib.pyplot as plt
+import numpy as np
 
 class FuzzingGenerator:
     def __init__(self, function_to_test, test_code, initial_coverage, executor):
@@ -12,7 +14,7 @@ class FuzzingGenerator:
         self._name = "FuzzingGenerator"
         self.initial_coverage = initial_coverage
         self.executor = executor
-        self.operator_scores = {"insert": 1.0, "delete": 1.0, "substitute": 1.0}
+        self.operator_scores = {"insert": 1.0, "substitute": 1.0}
         try:
             input_data = extract_seed_input(test_code)
         except ValueError as e:
@@ -69,7 +71,7 @@ class FuzzingGenerator:
         return "".join(random.choice(charset) for _ in range(length))
 
     def _choose_mutation_operator(self):
-        operators = ["insert", "delete", "substitute"]
+        operators = ["insert", "substitute"]
         weights = [max(self.operator_scores[op], 0.1) for op in operators]
         return random.choices(operators, weights=weights, k=1)[0]
 
@@ -105,7 +107,7 @@ class FuzzingGenerator:
             if mutation_type == "delta":
                 n = n + random.choice([-1000, -100, -10, -1, 1, 10, 100, 1000])
             elif mutation_type == "scale":
-                n = n * random.choice([0, 1, 2, 10])
+                n = n * random.choice([2, 10])
             else:
                 n = self._random_number_input()
 
@@ -167,12 +169,6 @@ class FuzzingGenerator:
             source = random.choice(mutated_list)
             new_input = self.mutate_input(source)
             mutated_list.insert(index, new_input)
-        elif mutation_type == "delete":
-            if len(mutated_list) > 1:
-                index = random.randrange(len(mutated_list))
-                mutated_list.pop(index)
-            else:
-                mutated_list[0] = self.mutate_input(mutated_list[0])
         else:  # substitute
             index = random.randrange(len(mutated_list))
             mutated_list[index] = self.mutate_input(mutated_list[index])
@@ -191,16 +187,56 @@ class FuzzingGenerator:
 
         best_fitness, _ = self.evaluate_fitness(best_inputs, alpha=alpha, beta=beta, gamma=gamma)
 
-        for _ in range(budget):
+        fitness_scores = [best_fitness]
+        coverage_scores = [self._coverage_metrics(self.executor._execute_input(input_list=best_inputs))]
+        for _ in range(budget - 1):
             mutation_type = self._choose_mutation_operator()
             candidate_inputs = self._mutate_suite_once(best_inputs, mutation_type)
             candidate_fitness, _ = self.evaluate_fitness(candidate_inputs, alpha=alpha, beta=beta, gamma=gamma)
             delta = candidate_fitness - best_fitness
-
+            line_coverage, branch_coverage = self._coverage_metrics(self.executor._execute_input(input_list=candidate_inputs))
             self._update_operator_score(mutation_type, delta)
+            candidate_inputs = self.minimize_suite(candidate_inputs)
 
-            if delta > 0:
+            if delta >= 0:
                 best_fitness = candidate_fitness
                 best_inputs = candidate_inputs
+                fitness_scores.append(best_fitness)
+                coverage_scores.append((line_coverage, branch_coverage))
+        
+        coverage_scores = np.array(coverage_scores)
+        plt.figure(figsize=(12, 5))
+        plt.subplot(1, 2, 1)
+        plt.plot(fitness_scores, marker='o')
+        plt.title('Fitness Score Over Iterations')
+        plt.xlabel('Iteration')
+        plt.ylabel('Fitness Score')
+        plt.grid()
+        plt.subplot(1, 2, 2)
+        plt.plot(coverage_scores[:, 0], label='Line Coverage', marker='o')
+        plt.plot(coverage_scores[:, 1], label='Branch Coverage', marker='o')
+        plt.title('Coverage Metrics Over Iterations')
+        plt.xlabel('Iteration')
+        plt.ylabel('Coverage')
+        plt.legend()
+        plt.grid()
+        plt.tight_layout()
+        plt.show()
 
-        return best_inputs
+        return best_inputs, best_fitness
+    
+    def minimize_suite(self, input_list):
+        if not input_list:
+            return []
+        minimized = copy.deepcopy(input_list)
+        current_fitness, _ = self.evaluate_fitness(minimized)
+        
+        for i in range(len(minimized) - 1, -1, -1):
+            candidate = minimized[:i] + minimized[i + 1:]
+            candidate_fitness, _ = self.evaluate_fitness(candidate)
+            candidate_coverage = self._coverage_metrics(self.executor._execute_input(input_list=candidate))
+            if candidate_fitness >= current_fitness and candidate_coverage >= self._coverage_metrics(self.executor._execute_input(input_list=minimized)):
+                minimized = candidate
+                current_fitness = candidate_fitness
+        
+        return minimized

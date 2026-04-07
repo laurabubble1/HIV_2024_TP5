@@ -25,7 +25,7 @@ def generate_inital_tests_with_llm(client, model_name, function_to_test):
     prompt = prompt_generator.generate_prompt()
 
     # Print the prompt
-    #print(prompt)
+    print(prompt)
 
     # Create a test function using the LLMTestGenerator
     test, test_name = llm_generator.create_test_function(prompt)
@@ -69,7 +69,7 @@ if __name__ == "__main__":
     model_name = "gemini-2.5-flash"
 
     function_to_test = number_to_words #file_name_check
-    #function_to_test = strongPasswordChecker
+    #function_to_test = strong_password_checker
 
     # Fitness function weights: Fitness = (alpha * line_coverage) + (beta * branch_coverage) - (gamma * num_tests)
     alpha = 1.0    # Weight for line coverage
@@ -127,8 +127,8 @@ if __name__ == "__main__":
     generator = FuzzingGenerator(function_to_test, test_code, initial_coverage, executor)
     seed_pool = generator._seed_pool()
     new_inputs_list = generator.mutate_list(seed_pool, alpha=alpha, beta=beta, gamma=gamma, budget=mutation_budget)
-
-    coverage_data = executor._execute_input(input_list=new_inputs_list)
+    print(f"New inputs generated: {new_inputs_list}")
+    coverage_data = executor._execute_input(input_list=new_inputs_list[0])
 
     print(initial_coverage)
     print(coverage_data)
