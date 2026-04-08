@@ -185,58 +185,94 @@ class FuzzingGenerator:
 
         best_inputs = [self._normalize_input(x) for x in best_inputs]
 
-        best_fitness, _ = self.evaluate_fitness(best_inputs, alpha=alpha, beta=beta, gamma=gamma)
+        
+        best_fitness, best_cov_data = self.evaluate_fitness(best_inputs, alpha=alpha, beta=beta, gamma=gamma)
+        evaluations_used = 1
 
+        best_inputs, best_fitness, best_cov_data, evals_in_min = self.minimize_suite(
+            best_inputs, best_fitness, best_cov_data, budget - evaluations_used, alpha, beta, gamma
+        )
+        evaluations_used += evals_in_min
+
+        
         fitness_scores = [best_fitness]
-        coverage_scores = [self._coverage_metrics(self.executor._execute_input(input_list=best_inputs))]
-        for _ in range(budget - 1):
+        line_cov, branch_cov = self._coverage_metrics(best_cov_data)
+        coverage_scores = [(line_cov, branch_cov)]
+
+        
+        remaining_budget = budget - evaluations_used
+        
+        for _ in range(remaining_budget):
             mutation_type = self._choose_mutation_operator()
             candidate_inputs = self._mutate_suite_once(best_inputs, mutation_type)
-            candidate_fitness, _ = self.evaluate_fitness(candidate_inputs, alpha=alpha, beta=beta, gamma=gamma)
+            
+            
+            candidate_fitness, candidate_cov_data = self.evaluate_fitness(candidate_inputs, alpha=alpha, beta=beta, gamma=gamma)
+            
             delta = candidate_fitness - best_fitness
-            line_coverage, branch_coverage = self._coverage_metrics(self.executor._execute_input(input_list=candidate_inputs))
+            
+            cand_line, cand_branch = self._coverage_metrics(candidate_cov_data)
             self._update_operator_score(mutation_type, delta)
-            candidate_inputs = self.minimize_suite(candidate_inputs)
 
+            
             if delta >= 0:
                 best_fitness = candidate_fitness
                 best_inputs = candidate_inputs
+                best_cov_data = candidate_cov_data
+                
                 fitness_scores.append(best_fitness)
-                coverage_scores.append((line_coverage, branch_coverage))
-        
-        coverage_scores = np.array(coverage_scores)
+                coverage_scores.append((cand_line, cand_branch))
+
+        final_line_cov, final_branch_cov = self._coverage_metrics(best_cov_data)
+
+
+        #plot coverage and fitness over time
+        line_covs, branch_covs = zip(*coverage_scores)
         plt.figure(figsize=(12, 5))
         plt.subplot(1, 2, 1)
         plt.plot(fitness_scores, marker='o')
-        plt.title('Fitness Score Over Iterations')
-        plt.xlabel('Iteration')
-        plt.ylabel('Fitness Score')
+        plt.title("Fitness Score Over Time")
+        plt.xlabel("Evaluation")
+        plt.ylabel("Fitness Score") 
         plt.grid()
         plt.subplot(1, 2, 2)
-        plt.plot(coverage_scores[:, 0], label='Line Coverage', marker='o')
-        plt.plot(coverage_scores[:, 1], label='Branch Coverage', marker='o')
-        plt.title('Coverage Metrics Over Iterations')
-        plt.xlabel('Iteration')
-        plt.ylabel('Coverage')
+        plt.plot(line_covs, label="Line Coverage", marker='o')
+        plt.plot(branch_covs, label="Branch Coverage", marker='o')
+        plt.title("Coverage Over Time")
+        plt.xlabel("Evaluation")
+        plt.ylabel("Coverage")
         plt.legend()
         plt.grid()
         plt.tight_layout()
         plt.show()
-
-        return best_inputs, best_fitness
+        return best_inputs, best_fitness, (final_line_cov, final_branch_cov)
     
-    def minimize_suite(self, input_list):
-        if not input_list:
-            return []
-        minimized = copy.deepcopy(input_list)
-        current_fitness, _ = self.evaluate_fitness(minimized)
+    def minimize_suite(self, input_list, current_fitness, current_coverage, budget, alpha=1.0, beta=1.0, gamma=0.05):
+        evals_used = 0
+
+        if not input_list or budget <= 0 or len(input_list) == 1:
+            return input_list, current_fitness, current_coverage, evals_used
         
-        for i in range(len(minimized) - 1, -1, -1):
-            candidate = minimized[:i] + minimized[i + 1:]
-            candidate_fitness, _ = self.evaluate_fitness(candidate)
-            candidate_coverage = self._coverage_metrics(self.executor._execute_input(input_list=candidate))
-            if candidate_fitness >= current_fitness and candidate_coverage >= self._coverage_metrics(self.executor._execute_input(input_list=minimized)):
+        minimized = copy.deepcopy(input_list)
+        current_line_cov, current_branch_cov = self._coverage_metrics(current_coverage)
+        
+        i = len(minimized) - 1
+
+        while i >= 0 and evals_used < budget:
+            candidate = minimized[:i] + minimized[:i+1]
+
+            if not candidate:
+                break
+
+            candidate_fitness, candidate_coverage = self.evaluate_fitness(candidate, alpha=alpha, beta=beta, gamma=gamma)
+            evals_used += 1
+            candidate_line_cov, candidate_branch_cov = self._coverage_metrics(candidate_coverage)
+
+            if candidate_line_cov >= current_line_cov and candidate_branch_cov >= current_branch_cov:
                 minimized = candidate
                 current_fitness = candidate_fitness
-        
-        return minimized
+                current_coverage = candidate_coverage
+                current_line_cov, current_branch_cov = candidate_line_cov, candidate_branch_cov
+
+            i -= 1
+            return minimized, current_fitness, current_coverage, evals_used

@@ -16,7 +16,7 @@ class PromptGenerator:
         self._few_shot_examples = few_shot_examples
         #prompt = f" I am testing a function which takes a string representing a file's name, and returns   \
     #$'Yes' if the the file's name is valid, and returns 'No' otherwise.Generate diverse tests for the function {self._func_name} \n " 
-        prompt = f"Generate tests with pytest for the function {self._func_name} \n I want you to generate a test function that has multiple assert statements that are formatted as follows: assert function_to_test(input) == expected_output. The test function should be named test_{self._func_name} and should be written in a way that it can be directly executed. The function to test is defined as follows:\n"
+        prompt = f"Generate tests with pytest for the function {self._func_name} \n I want you to generate a test function that has multiple assert statements that are formatted as follows: assert function_to_test(input) == expected_output. Try to minimize the number of test cases. The test function should be named test_{self._func_name} and should be written in a way that it can be directly executed. The function to test is defined as follows:\n"
         if self._few_shot_examples:
 
             for example in self._few_shot_examples:
